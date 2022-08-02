@@ -7,6 +7,7 @@ import static org.hamcrest.collection.IsEmptyCollection.empty;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -153,6 +154,54 @@ public class PostbankPDFExtractorTest
                         is(Money.of("EUR", Values.Amount.factorize(0.00))));
     }
 
+    @Test
+    public void testPRIVATE()
+    {
+        PostbankPDFExtractor extractor = new PostbankPDFExtractor(new Client());
+
+        List<Exception> errors = new ArrayList<>();
+
+        List<Item> results = extractor.extract(PDFInputFile.loadTestCase(getClass(), "postbank_keepPrivate.txt"), errors);
+
+        assertThat(errors, empty());
+        assertThat(results.size(), is(28));
+
+        Iterator<Item> it = results.stream().filter(i -> i instanceof BuySellEntryItem).iterator();
+        while (it.hasNext()) {
+            // 16 Kauf / Verkauf
+            // 3 Dividendengutschrift
+            Item item = it.next();
+            
+            BuySellEntry entry = (BuySellEntry) item.getSubject();
+            
+            System.out.println(entry.getPortfolioTransaction().getSecurity().getName());
+            System.out.println(entry.getPortfolioTransaction().getDateTime());
+
+        }
+                        
+        // check security
+        Security security = results.stream().filter(i -> i instanceof SecurityItem).findFirst()
+                        .orElseThrow(IllegalArgumentException::new).getSecurity();
+        assertThat(security.getIsin(), is("US02079K3059"));
+        assertThat(security.getWkn(), is("A14Y6F"));
+
+        // check buy sell transaction
+        Optional<Item> item = results.stream().filter(i -> i instanceof BuySellEntryItem).findFirst();
+        assertThat(item.orElseThrow(IllegalArgumentException::new).getSubject(), instanceOf(BuySellEntry.class));
+        BuySellEntry entry = (BuySellEntry) item.orElseThrow(IllegalArgumentException::new).getSubject();
+
+        assertThat(entry.getPortfolioTransaction().getType(), is(PortfolioTransaction.Type.SELL));
+        assertThat(entry.getAccountTransaction().getType(), is(AccountTransaction.Type.SELL));
+
+        assertThat(entry.getPortfolioTransaction().getAmount(), is(Values.Amount.factorize(3306.21)));
+        assertThat(entry.getPortfolioTransaction().getDateTime(), is(LocalDateTime.parse("2015-12-10T14:02:23")));
+        assertThat(entry.getPortfolioTransaction().getShares(), is(Values.Share.factorize(5)));
+        assertThat(entry.getPortfolioTransaction().getUnitSum(Unit.Type.FEE),
+                        is(Money.of("EUR", Values.Amount.factorize(14.95))));
+        assertThat(entry.getPortfolioTransaction().getUnitSum(Unit.Type.TAX),
+                        is(Money.of("EUR", Values.Amount.factorize(0.00))));
+    }
+    
     @Test
     public void testWertpapierVerkauf01()
     {

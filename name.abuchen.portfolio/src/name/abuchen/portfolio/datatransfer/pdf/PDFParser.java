@@ -27,6 +27,8 @@ import name.abuchen.portfolio.datatransfer.Extractor.Item;
         private Map<String, String> context = new HashMap<>();
         private BiConsumer<Map<String, String>, String[]> contextProvider;
 
+        private Pattern trimAtString=null;
+
         public DocumentType(List<Pattern> mustInclude)
         {
             this.mustInclude.addAll(mustInclude);
@@ -81,9 +83,25 @@ import name.abuchen.portfolio.datatransfer.Extractor.Item;
             // reset context and parse it from this file
             context.clear();
             parseContext(context, lines);
+            
+            lines = trimFile(lines);
 
             for (Block block : blocks)
                 block.parse(filename, items, lines);
+        }
+
+        private String[] trimFile(String[] lines)
+        {
+         if (trimAtString!=null) {
+             for (int ii = 0; ii < lines.length; ii++)
+             {
+                 Matcher matcher = trimAtString.matcher(lines[ii]);
+                 if (matcher.matches()) {
+                     lines = Arrays.copyOfRange(lines, 0, ii);
+                 }
+             }         
+             }
+         return lines;
         }
 
         /**
@@ -102,6 +120,12 @@ import name.abuchen.portfolio.datatransfer.Extractor.Item;
             {
                 contextProvider.accept(context, lines);
             }
+        }
+
+        public void setTrimFile(String regExString)
+        {
+            this.trimAtString = Pattern.compile(regExString);
+
         }
     }
 

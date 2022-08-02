@@ -64,42 +64,42 @@ public class PostbankPDFExtractor extends AbstractPDFExtractor
                         // Stück 158 XTR.(IE) - MSCI WORLD IE00BJ0KDQ92 (A1XB5U)
                         // REGISTERED SHARES 1C O.N.
                         .section("isin", "wkn", "name", "shares", "name1")
-                        .match("^St.ck (?<shares>[\\d.,]+) (?<name>.*) (?<isin>[\\w]{12}.*) (\\((?<wkn>.*)\\).*)")
+                        .match("^.*St.ck (?<shares>[\\d.,\\s]+) (?<name>.*) (?<isin>[\\w]{12}.*) (\\((?<wkn>.*)\\).*)")
                         .match("(?<name1>.*)") //
                         .assign((t, v) -> {
                             if (!v.get("name1").startsWith("Handels-/Ausführungsplatz"))
                                 v.put("name", v.get("name").trim() + " " + v.get("name1"));
 
                             t.setSecurity(getOrCreateSecurity(v));
-                            t.setShares(asShares(v.get("shares")));
+                            t.setShares(asShares(v.get("shares").replaceAll("\\s", "")));
                         })
 
                         // For "Wertpapier Abrechnung Verkauf-Festpreisgeschäft" there's not "Schlusstag" but just a "Datum" section. 
                         .section("date").optional() //
-                        .match("^Datum (?<date>\\d+.\\d+.\\d{4})") //
-                        .assign((t, v) -> t.setDate(asDate(v.get("date"))))
+                        .match("^Datum\\s+(?<date>[\\d\\s]+.[\\d\\s]+.[\\d\\s]+).*")
+                        .assign((t, v) -> t.setDate(asDate(v.get("date").replaceAll("\\s", ""))))
                         
                         // Schlusstag 05.02.2020
                         .section("date").optional() //
-                        .match("^Schlusstag (?<date>\\d+.\\d+.\\d{4})") //
-                        .assign((t, v) -> t.setDate(asDate(v.get("date"))))
+                        .match("^Schlusstag\\s+(?<date>[\\d\\s]+.[\\d\\s]+.[\\d\\s]+).*")
+                        .assign((t, v) -> t.setDate(asDate(v.get("date").replaceAll("\\s", ""))))
 
                         // Schlusstag/-Zeit 04.02.2020 08:00:04
                         // Auftragserteilung/ -ort Online-Banking
                         .section("date", "time").optional()
-                        .match("^Schlusstag\\/-Zeit (?<date>\\d+.\\d+.\\d{4}) (?<time>\\d+:\\d+:\\d+).*")
+                        .match("^.*Schlusstag\\/-Zeit\\s+(?<date>\\d\\s*\\d\\s*\\.?\\s*\\d\\s*\\d\\s*.?\\s*\\d\\s*\\d\\s*\\d\\s*\\d)\\s+(?<time>\\d\\s*\\d\\s*:?\\s*\\d\\s*\\d\\s*[:·]?\\s*\\d\\s*\\d)?.*")
                         .assign((t, v) -> {
                             if (v.get("time") != null)
-                                t.setDate(asDate(v.get("date"), v.get("time")));
+                                t.setDate(asDate(fixDateTime(v.get("date"),'.'), fixDateTime(v.get("time"),':')));
                             else
-                                t.setDate(asDate(v.get("date")));
+                                t.setDate(asDate(fixDateTime(v.get("date"),'.')));
                         })
 
                         // Ausmachender Betrag 9.978,18- EUR
                         .section("amount", "currency")
-                        .match("^Ausmachender Betrag (?<amount>[.,\\d]+)[\\+-]? (?<currency>[\\w]{3})")
+                        .match("^.*Ausmachender\\s+Betrag\\s+(?<amount>[.,\\d\\s]+)[\\+-]?\\s+(?<currency>[\\w]{3}).*")
                         .assign((t, v) -> {
-                            t.setAmount(asAmount(v.get("amount")));
+                            t.setAmount(asAmount(v.get("amount").replaceAll("\\s", "")));
                             t.setCurrencyCode(v.get("currency"));
                         })
 
@@ -107,6 +107,22 @@ public class PostbankPDFExtractor extends AbstractPDFExtractor
 
         addTaxesSectionsTransaction(pdfTransaction, type);
         addFeesSectionsTransaction(pdfTransaction, type);
+    }
+
+    private String fixDateTime(String dateTimeString, char divider)
+    {
+        dateTimeString = dateTimeString.replaceAll("\\s", "");
+        StringBuffer s = new StringBuffer(dateTimeString);
+        if (dateTimeString.charAt(2)!=divider) {
+            s.insert(2, divider);
+        }
+        if (s.toString().charAt(5)!=divider) {
+            if (!Character.isDigit(s.toString().charAt(5))) {
+                s.deleteCharAt(5);
+            }
+            s.insert(5, divider);
+        }
+        return s.toString();
     }
 
     private void addDividendeTransaction()
@@ -255,7 +271,7 @@ public class PostbankPDFExtractor extends AbstractPDFExtractor
         transaction
                         // Provision 39,95- EUR
                         .section("fee", "currency").optional()
-                        .match("^Provision (?<fee>[.,\\d]+)- (?<currency>[\\w]{3}).*")
+                        .match("^.*Provision\\s+(?<fee>[.,\\d\\s]+)- (?<currency>[\\w]{3}).*")
                         .assign((t, v) -> processFeeEntries(t, v, type))
 
                         // Abwicklungskosten Börse 0,04- EUR
@@ -312,7 +328,7 @@ public class PostbankPDFExtractor extends AbstractPDFExtractor
     {
         if (t instanceof name.abuchen.portfolio.model.Transaction)
         {
-            Money fee = Money.of(asCurrencyCode(v.get("currency")), asAmount(v.get("fee")));
+            Money fee = Money.of(asCurrencyCode(v.get("currency")), asAmount(v.get("fee").replaceAll("\\s", "")));
             PDFExtractorUtils.checkAndSetFee(fee, (name.abuchen.portfolio.model.Transaction) t, type);
         }
         else
